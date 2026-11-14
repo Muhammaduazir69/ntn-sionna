@@ -76,7 +76,7 @@ NtnRealStackHelper* g_rs = nullptr;
 Ptr<SionnaCirPropagationLossModel> g_cir;
 Ptr<NtnEnuProjectionMobilityModel> g_satEnu;
 Ptr<MobilityModel> g_ueMob;
-double g_freqHz = 2.0e9;
+double g_freqHz = 2.185e9; // TS 38.101-5 n256 DOWNLINK block (2170-2200 MHz).
 double g_simTime = 12.0;
 
 // Measured-SINR statistics from the real plane, plus the TR 38.811 free-space
@@ -187,7 +187,7 @@ int
 main(int argc, char* argv[])
 {
     double duration = 12.0;
-    double freqHz = 2.0e9;
+    double freqHz = 2.185e9; // TS 38.101-5 n256 DOWNLINK block (2170-2200 MHz).
     double altKm = 600.0;
     double satEirpDbm = 70.0; // healthy nr (FR1 Friis) LEO downlink
     std::string radio = "nr"; // radio spine: "nr" (5G-LENA FR1) | "mmwave" (FR2)
@@ -325,6 +325,31 @@ main(int argc, char* argv[])
     Simulator::Stop(Seconds(duration));
     Simulator::Run();
     rs.Collect();
+    // WF-12b: same as ris-assisted-leo-link. The provenance line below is printed
+    // to stdout; the health record is what survives the run, so it carries the
+    // channel's origin too.
+    if (g_provenanceCh)
+    {
+        rs.AddHealthRow("sionna_ray_traced",
+                        g_provenanceCh->AllQueriesRayTraced() ? "1" : "0",
+                        g_provenanceCh->AllQueriesRayTraced()
+                            ? "sionna-rt (no free-space fallback)"
+                            : "free-space fallback occurred");
+        rs.AddHealthRow("sionna_fallbacks",
+                        std::to_string(g_provenanceCh->GetFallbacks()),
+                        "sionna-bridge counter");
+        rs.AddHealthRow("sionna_ray_traced_queries",
+                        std::to_string(g_provenanceCh->GetRayTraced()),
+                        "sionna-bridge counter");
+    }
+    else
+    {
+        // Silence is what this fix is about. With no live channel the run is
+        // pure TR 38.811, and an artifact that simply omits the row leaves a
+        // reader unable to tell that from a ray-traced one.
+        rs.AddHealthRow("sionna_ray_traced", "0",
+                        "no NtnSionnaChannel in this run (TR 38.811 only)");
+    }
     rs.WriteHealthReport();
 
     if (g_writerOpen)
